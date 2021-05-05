@@ -82,14 +82,47 @@ namespace xpas
             /// which is "i" in the notation above
             size_t _first_view_pos;
         };
+
+        /// A simple forward iterator for a sliding window
+        class simple_window_iterator
+        {
+        public:
+            using iterator_category = std::forward_iterator_tag;
+            using reference = node_entry_view&;
+
+            simple_window_iterator(node_entry_view view, size_t kmer_size, phylo_kmer::score_type threshold) noexcept;
+            simple_window_iterator(const simple_window_iterator&) = delete;
+            simple_window_iterator(simple_window_iterator&&) = delete;
+            simple_window_iterator& operator=(const simple_window_iterator&) = delete;
+            simple_window_iterator& operator=(simple_window_iterator&&) = delete;
+            ~simple_window_iterator() = default;
+
+            simple_window_iterator& operator++();
+
+            bool operator==(const simple_window_iterator& rhs) const noexcept;
+            bool operator!=(const simple_window_iterator& rhs) const noexcept;
+
+            reference operator*() noexcept;
+        private:
+            node_entry_view _view;
+
+            size_t _kmer_size;
+            phylo_kmer::score_type _threshold;
+        };
     }
+
 
     /// Constructing iterator of node_entry
     class chain_windows
     {
     public:
         using iterator_category = std::forward_iterator_tag;
-        using const_iterator = impl::chain_window_iterator;
+
+        // DD, DDCW
+        //using const_iterator = impl::chain_window_iterator;
+
+        // BB, SP
+        using const_iterator = impl::simple_window_iterator;
 
         using reference = node_entry_view&;
 

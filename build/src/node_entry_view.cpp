@@ -176,11 +176,6 @@ phylo_mmer bnb_kmer_iterator::next_phylokmer()
 }
 
 
-dac_kmer_iterator xpas::impl::make_dac_end_iterator()
-{
-    return { nullptr, 0, 0.0, 0, 0, {} };
-}
-
 bool kmer_score_comparator(const unpositioned_phylo_kmer& k1, const unpositioned_phylo_kmer& k2)
 {
     return k1.score > k2.score;
@@ -430,6 +425,181 @@ void dac_kmer_iterator::_finish_iterator()
     *this = make_dac_end_iterator();
 }
 
+dac_kmer_iterator xpas::impl::make_dac_end_iterator()
+{
+    return { nullptr, 0, 0.0, 0, 0, {} };
+}
+
+sp_kmer_iterator::sp_kmer_iterator(node_entry_view* view, size_t kmer_size,
+                                   xpas::phylo_kmer::score_type threshold,
+                                   vector_type<xpas::phylo_kmer::score_type> prefixes,
+                                   vector_type<xpas::phylo_kmer::score_type> suffixes) noexcept
+    : _entry_view{ view }
+      , _kmer_size{ kmer_size }
+      , _prefixes{ std::move(prefixes) }
+      , _prefix_idx(0)
+      , _suffixes{ std::move(suffixes) }
+      , _suffix_idx(0)
+      , _threshold(threshold)
+{
+    /// If not end()
+    if (_entry_view)
+    {
+        const auto num_k1mers = static_cast<size_t>(std::pow(seq_traits::alphabet_size, _kmer_size - 1));
+
+        _suffixes.resize(num_k1mers);
+        _suffixes = vector_type<phylo_kmer::score_type>(num_k1mers, threshold);
+
+        // If it is the very first window in the chain
+        if (_prefixes.empty())
+        {
+            auto it = dac_kmer_iterator(_entry_view, _kmer_size - 1, threshold, view->get_start_pos(), 0, {});
+            const auto end = make_dac_end_iterator();
+
+            _prefixes.resize(num_k1mers);
+            _prefixes = vector_type<phylo_kmer::score_type>(num_k1mers, threshold);
+
+            //std::cout << "\tprefix of " << _prefix_size << " from " << start_pos << ":" << std::endl;
+            for (; it != end; ++it)
+            {
+                _prefixes[it->key] = it->score;
+                /*std::cout << "\t\t prefix " << it->key << " " << xpas::decode_kmer(it->key, _kmer_size - 1)
+                          << " " << std::pow(10, it->score) << std::endl;*/
+            }
+        }
+
+        _current = _next_phylokmer();
+    }
+
+
+    /// leftmost_symbol_mask = xor(max k-mer, max k-1-mer)
+    const auto max_kmer_key = static_cast<seq_traits::key_type>(std::pow(seq_traits::alphabet_size, _kmer_size));
+    const auto max_k1mer_key =  static_cast<seq_traits::key_type>(std::pow(seq_traits::alphabet_size, _kmer_size));
+    _leftmost_symbol_mask = max_kmer_key ^ max_k1mer_key;
+}
+
+sp_kmer_iterator& sp_kmer_iterator::operator=(sp_kmer_iterator&& rhs) noexcept
+{
+    if (*this != rhs)
+    {
+        _entry_view = rhs._entry_view;
+        _kmer_size = rhs._kmer_size;
+        _prefixes = std::move(rhs._prefixes);
+        _prefix_idx = rhs._prefix_idx;
+        _suffix_idx = rhs._suffix_idx;
+        _threshold = rhs._threshold;
+    }
+    return *this;
+}
+
+bool sp_kmer_iterator::operator==(const sp_kmer_iterator& rhs) const noexcept
+{
+    /// We do not want to compare all prefixes for sure.
+    /// Actually the only behaviour we need from this is to compare anything against end(),
+    /// which has got an empty vector of suffixes -- so comparing vector sizes will do the job
+    return _entry_view == rhs._entry_view &&
+           _kmer_size == rhs._kmer_size &&
+           _prefixes.size() == rhs._prefixes.size() &&
+           _prefix_idx == rhs._prefix_idx &&
+           _suffix_idx == rhs._suffix_idx &&
+           _threshold == rhs._threshold;
+}
+
+bool sp_kmer_iterator::operator!=(const sp_kmer_iterator& rhs) const noexcept
+{
+    return !(*this == rhs);
+}
+
+sp_kmer_iterator& sp_kmer_iterator::operator++()
+{
+    _current = _next_phylokmer();
+    return *this;
+}
+
+sp_kmer_iterator::reference sp_kmer_iterator::operator*() const noexcept
+{
+    return _current;
+}
+
+sp_kmer_iterator::pointer sp_kmer_iterator::operator->() const noexcept
+{
+    return &_current;
+}
+
+constexpr seq_traits::key_type fill_n_bits(size_t n)
+{
+    return (1U << n) - 1U;
+}
+
+xpas::unpositioned_phylo_kmer sp_kmer_iterator::_next_phylokmer()
+{
+    if (_prefix_idx < _prefixes.size())
+    {
+        const node_entry* entry = _entry_view->get_entry();
+        const auto& new_letter = entry->at(_entry_view->get_start_pos() + _kmer_size - 1, _suffix_idx);
+
+        /// Add the last base and compute the score of the whole k-mer
+        const auto new_key = (static_cast<seq_traits::key_type>(_prefix_idx) << bit_length<xpas::seq_type>())
+                             | new_letter.index;
+        const auto new_score = _prefixes[_prefix_idx] + new_letter.score;
+
+        /*std::cout << "\t\t k-mer " << xpas::decode_kmer(new_key, _kmer_size)  << " " << std::pow(10, new_score) << " = "
+                  << xpas::decode_kmer(_prefix_idx, _kmer_size - 1)  << " " << std::pow(10, _prefixes[_prefix_idx]) << " "
+                  << xpas::decode_kmer(new_letter.index, 1)  << " " << std::pow(10, new_letter.score) << " "
+                  << std::endl;*/
+
+
+        /// Take out the first base of the full k-mer to get the score of the suffix,
+        /// and save it for the next window
+        const auto first_base_key = _prefix_idx & _leftmost_symbol_mask;
+        const auto first_base = entry->at(_entry_view->get_start_pos(), first_base_key);
+        const auto suffix_key = new_key & fill_n_bits((_kmer_size - 1) * bit_length<seq_type>());
+        const auto suffix_score = new_score - first_base.score;
+        _suffixes[suffix_key] = suffix_score;
+        /*std::cout << "\t\t suffix " << suffix_key << " " << xpas::decode_kmer(suffix_key, _kmer_size - 1)
+                  << " -> " << std::pow(10, suffix_score) << " = " << std::pow(10, new_score) << " / "
+                  << std::pow(10, first_base.score) << std::endl;*/
+
+        _suffix_idx++;
+        if (_suffix_idx == seq_traits::alphabet_size)
+        {
+            _suffix_idx = 0;
+            _prefix_idx++;
+        }
+
+        /// If we run out of prefixes, that is the end
+        if (_prefix_idx == _prefixes.size())
+        {
+            _finish_iterator();
+            return {};
+        }
+
+        return { new_key, new_score };
+    }
+
+    _finish_iterator();
+    return {};
+}
+
+void sp_kmer_iterator::_finish_iterator()
+{
+    if (_entry_view != nullptr)
+    {
+        /// Swap prefix and suffix score arrays, and pass them to the next window
+        std::swap(_suffixes, _prefixes);
+        _entry_view->set_prefix_scores(std::move(_prefixes));
+        _entry_view->set_suffix_scores(std::move(_suffixes));
+    }
+
+    /// Now we can safely mark the iterator as ended
+    *this = make_sp_end_iterator();
+}
+
+sp_kmer_iterator impl::make_sp_end_iterator()
+{
+    return { nullptr, 0, 0.0, {}, {} };
+}
+
 node_entry_view::node_entry_view(const node_entry* entry, phylo_kmer::score_type threshold,
                                  phylo_kmer::pos_type start, phylo_kmer::pos_type end) noexcept
     : _entry{ entry }
@@ -447,6 +617,8 @@ node_entry_view::node_entry_view(const node_entry_view& other) noexcept
     /// We need the copy constructor, but only for windows without precomputed prefixes.
     /// Check that we never copy those around
     assert(other._prefixes.empty());
+    assert(other._prefix_scores.empty());
+    assert(other._suffix_scores.empty());
 }
 
 node_entry_view::iterator node_entry_view::begin()
@@ -455,8 +627,11 @@ node_entry_view::iterator node_entry_view::begin()
     //const node_entry* entry, size_t kmer_size, phylo_kmer::score_type threshold,
     //                                     phylo_kmer::pos_type start_pos, stack_type&& stack)
 
+    // SP:
+    return { this, kmer_size, _threshold, std::move(_prefix_scores), std::move(_suffix_scores) };
+
     // DAC-CW:
-    return { this, kmer_size, _threshold, _start, _prefix_size, std::move(_prefixes) };
+    // return { this, kmer_size, _threshold, _start, _prefix_size, std::move(_prefixes) };
 
     // DAC:
     //return { this, kmer_size, _threshold, _start, _prefix_size, {} };
@@ -467,8 +642,12 @@ node_entry_view::iterator node_entry_view::begin()
 
 node_entry_view::iterator node_entry_view::end() const noexcept
 {
+    // SP:
+    return make_sp_end_iterator();
+
     // DAC:
-    return make_dac_end_iterator();
+    //return make_dac_end_iterator();
+
     // BNB:
     //return make_bnb_end_iterator();
 }
@@ -520,6 +699,16 @@ xpas::phylo_kmer::score_type node_entry_view::get_threshold() const noexcept
 void node_entry_view::set_prefixes(impl::vector_type<xpas::unpositioned_phylo_kmer> prefixes)
 {
     _prefixes = std::move(prefixes);
+}
+
+void node_entry_view::set_prefix_scores(impl::vector_type<phylo_kmer::score_type> prefix_scores)
+{
+    _prefix_scores = std::move(prefix_scores);
+}
+
+void node_entry_view::set_suffix_scores(impl::vector_type<phylo_kmer::score_type> suffix_scores)
+{
+    _suffix_scores = std::move(suffix_scores);
 }
 
 size_t node_entry_view::get_prefix_size() const noexcept

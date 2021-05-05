@@ -452,8 +452,8 @@ namespace xpas
                 //std::cout << "\tWINDOW " << window.get_start_pos() << std::endl;
                 for (const auto& kmer : window)
                 {
-                    //std::cout << "\t\t" << kmer.key << " " << xpas::decode_kmer(kmer.key, _kmer_size) << " -> "
-                    //          << kmer.score << " " << std::pow(10, kmer.score) << std::endl;
+                    /*std::cout << "\t\t SAVE: " << kmer.key << " " << xpas::decode_kmer(kmer.key, _kmer_size) << " -> "
+                              << kmer.score << " " << std::pow(10, kmer.score) << std::endl << std::endl;*/
                     xpas::put(hash_maps[kmer_batch(kmer.key, _num_batches)], kmer);
                     ++count;
                 }

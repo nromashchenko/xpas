@@ -121,6 +121,44 @@ chain_window_iterator::reference chain_window_iterator::operator*() noexcept
     return _view;
 }
 
+simple_window_iterator::simple_window_iterator(node_entry_view view,
+                                               size_t kmer_size, phylo_kmer::score_type threshold) noexcept
+    : _view{ std::move(view) }
+    , _kmer_size{ kmer_size }
+    , _threshold{ threshold }
+{}
+
+simple_window_iterator& simple_window_iterator::operator++()
+{
+    const auto entry = _view.get_entry();
+
+    if (size_t(_view.get_end_pos() + 1) < entry->get_alignment_size())
+    {
+        _view.set_start_pos(_view.get_start_pos() + 1);
+        _view.set_end_pos(_view.get_end_pos() + 1);
+    }
+    else
+    {
+        _view = make_empty_view();
+    }
+    return *this;
+}
+
+bool simple_window_iterator::operator==(const simple_window_iterator& rhs) const noexcept
+{
+    return _view == rhs._view;
+}
+
+bool simple_window_iterator::operator!=(const simple_window_iterator& rhs) const noexcept
+{
+    return !(*this == rhs);
+}
+
+simple_window_iterator::reference simple_window_iterator::operator*() noexcept
+{
+    return _view;
+}
+
 chain_windows::chain_windows(const node_entry& entry, size_t kmer_size, xpas::phylo_kmer::score_type threshold)
     : _entry{ entry }
     , _kmer_size{ kmer_size }

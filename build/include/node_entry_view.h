@@ -70,8 +70,6 @@ namespace xpas
             phylo_mmer _current;
         };
 
-
-
         /// \brief Divide-and-conquer phylo-kmer iterator.
         class dac_kmer_iterator
         {
@@ -118,14 +116,72 @@ namespace xpas
         };
 
         dac_kmer_iterator make_dac_end_iterator();
+
+        /// k-1 shared prefix iterator
+        class sp_kmer_iterator
+        {
+        public:
+            /// Member types
+            using iterator_category = std::forward_iterator_tag;
+            using reference = const xpas::unpositioned_phylo_kmer&;
+            using pointer = const xpas::unpositioned_phylo_kmer*;
+
+            sp_kmer_iterator(node_entry_view* view, size_t kmer_size,
+                             xpas::phylo_kmer::score_type threshold,
+                             vector_type<xpas::phylo_kmer::score_type> prefixes,
+                             vector_type<xpas::phylo_kmer::score_type> suffixes) noexcept;
+            sp_kmer_iterator(const sp_kmer_iterator&) = delete;
+            sp_kmer_iterator(sp_kmer_iterator&&) = default;
+            sp_kmer_iterator& operator=(const sp_kmer_iterator&) = delete;
+            sp_kmer_iterator& operator=(sp_kmer_iterator&& rhs) noexcept;
+            ~sp_kmer_iterator() noexcept = default;
+
+            bool operator==(const sp_kmer_iterator& rhs) const noexcept;
+            bool operator!=(const sp_kmer_iterator& rhs) const noexcept;
+            sp_kmer_iterator& operator++();
+
+            reference operator*() const noexcept;
+            pointer operator->() const noexcept;
+        private:
+            xpas::unpositioned_phylo_kmer _next_phylokmer();
+
+            void _finish_iterator();
+
+            node_entry_view* _entry_view;
+            size_t _kmer_size;
+
+            /// |Alphabet|^(k-1) of prefixes calculated from the previous window
+            vector_type<xpas::phylo_kmer::score_type> _prefixes;
+
+            /// the last prefix the iterator has visited so far
+            size_t _prefix_idx;
+
+            /// |Alphabet|^(k-1) of suffixes saved for the next window
+            vector_type<xpas::phylo_kmer::score_type> _suffixes;
+
+            /// The last visited k-mer
+            xpas::unpositioned_phylo_kmer _current;
+
+            /// the index of the next base in the very last column of the window,
+            /// WARNING: has nothing to do with _suffixes!
+            size_t _suffix_idx;
+
+            phylo_kmer::score_type _threshold;
+
+            phylo_kmer::key_type _leftmost_symbol_mask;
+        };
+
+        sp_kmer_iterator make_sp_end_iterator();
     }
+
 
     /// \brief A lightweight view of node_entry. Implements a "window" of size K over a node_entry.
     class node_entry_view final
     {
     public:
-        using iterator = xpas::impl::dac_kmer_iterator;
+        //using iterator = xpas::impl::dac_kmer_iterator;
         //using iterator = xpas::impl::bnb_kmer_iterator;
+        using iterator = xpas::impl::sp_kmer_iterator;
         using reference = iterator::reference;
 
         node_entry_view(const node_entry* entry, xpas::phylo_kmer::score_type threshold,
@@ -158,6 +214,9 @@ namespace xpas
 
         void set_prefixes(impl::vector_type<xpas::unpositioned_phylo_kmer> prefixes);
 
+        void set_prefix_scores(impl::vector_type<phylo_kmer::score_type> prefix_scores);
+        void set_suffix_scores(impl::vector_type<phylo_kmer::score_type> suffix_scores);
+
         [[nodiscard]]
         size_t get_prefix_size() const noexcept;
 
@@ -170,10 +229,14 @@ namespace xpas
         xpas::phylo_kmer::pos_type _start;
         xpas::phylo_kmer::pos_type _end;
 
-        /// The vector of precomputed prefixes for this window.
+        /// The vector of precomputed prefix scores for this window.
         /// Can be obtained from iteration of the previous window
         /// (according to the order of windows, given by chain_windows)
         impl::vector_type<xpas::unpositioned_phylo_kmer> _prefixes;
+
+        /// The array of prefix scores, where the elemnent index is the k-mer value.
+        impl::vector_type<phylo_kmer::score_type> _prefix_scores;
+        impl::vector_type<phylo_kmer::score_type> _suffix_scores;
 
         /// The length of the precomputed prefixes stored in _prefixes.
         /// It is zero if _prefixes if empty.
