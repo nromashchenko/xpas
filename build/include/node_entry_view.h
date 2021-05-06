@@ -23,9 +23,9 @@ namespace xpas
         {
             xpas::unpositioned_phylo_kmer mmer;
             /// a position of the last letter
-            xpas::phylo_kmer::pos_type last_position;
-            size_t last_index;
-            size_t next_index;
+            xpas::phylo_kmer::pos_type last_column;
+            size_t last_row;
+            size_t next_row;
         };
 
 
@@ -35,7 +35,6 @@ namespace xpas
         class bnb_kmer_iterator
         {
         public:
-
             /// Member types
             using iterator_category = std::forward_iterator_tag;
             using reference = const xpas::phylo_kmer&;
@@ -45,7 +44,7 @@ namespace xpas
 
             bnb_kmer_iterator() noexcept;
             bnb_kmer_iterator(const node_entry* entry, size_t kmer_size, xpas::phylo_kmer::score_type threshold,
-                              xpas::phylo_kmer::pos_type start_pos, stack_type&& stack) noexcept;
+                              xpas::phylo_kmer::pos_type start_pos) noexcept;
             bnb_kmer_iterator(const bnb_kmer_iterator&) = delete;
             bnb_kmer_iterator(bnb_kmer_iterator&&) = default;
             bnb_kmer_iterator& operator=(const bnb_kmer_iterator&) = delete;
@@ -68,6 +67,14 @@ namespace xpas
             xpas::phylo_kmer::score_type _threshold;
             stack_type _stack;
             phylo_mmer _current;
+
+            struct column_pair
+            {
+                size_t index;
+                double entropy;
+            };
+
+            std::vector<column_pair> _column_order;
         };
 
 

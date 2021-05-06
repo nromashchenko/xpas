@@ -12,17 +12,17 @@ namespace xpas
     class node_entry final
     {
     public:
-        using vector_type = std::vector<xpas::row_type>;
+        using vector_type = std::vector<xpas::column_type>;
 
         explicit node_entry() noexcept = default;
-        node_entry(std::string _id, vector_type&& rows);
+        node_entry(std::string _id, vector_type columns);
         node_entry(const node_entry&) = delete;
-        node_entry(node_entry&&) = default;
+        node_entry(node_entry&& entry) = default;
         node_entry& operator=(const node_entry&) = delete;
         node_entry& operator=(node_entry&&) = default;
         ~node_entry() noexcept = default;
 
-        void push_back(xpas::row_type row);
+        void add_column(xpas::column_type column);
 
         [[nodiscard]]
         size_t get_alignment_size() const;
@@ -31,11 +31,18 @@ namespace xpas
         std::string get_label() const;
 
         [[nodiscard]]
-        const xpas::proba_pair& at(size_t position, size_t variant) const;
+        const xpas::proba_pair& at(size_t column, size_t row) const;
+
+        void calculate_entropies();
+
+        [[nodiscard]]
+        double get_column_entropy(size_t column_idx) const;
 
     private:
         std::string _branch_label;
-        vector_type _rows;
+        vector_type _columns;
+
+        std::vector<double> _entropies;
     };
 
     namespace impl

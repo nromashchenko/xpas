@@ -15,54 +15,54 @@ bnb_kmer_iterator make_bnb_end_iterator()
     return bnb_kmer_iterator();
 }
 
-bnb_kmer_iterator make_bnb_begin_iterator(const node_entry* entry, phylo_kmer::pos_type start, size_t kmer_size,
-                                          phylo_kmer::score_type threshold)
+bnb_kmer_iterator::bnb_kmer_iterator() noexcept
+    : _entry{ nullptr }, _kmer_size{ 0 }, _start_pos{ 0 }, _threshold{ 0.0 }, _stack{ }
+{}
+
+bnb_kmer_iterator::bnb_kmer_iterator(const node_entry* entry, size_t kmer_size, phylo_kmer::score_type threshold,
+                                     phylo_kmer::pos_type start_pos) noexcept
+    : _entry{ entry }
+    , _kmer_size{ kmer_size }
+    , _start_pos{ start_pos }
+    , _threshold{ threshold }
 {
-    bnb_kmer_iterator::stack_type stack;
-    stack.reserve(kmer_size + 1);
+    /// Fill the column order and sort it by descending entropy
+    for (size_t i = 0; i < _kmer_size; ++i)
+    {
+        _column_order.push_back({i, entry->get_column_entropy(start_pos + i)});
+    }
+    std::sort(_column_order.begin(), _column_order.end(),
+              [](auto &lhs, auto &rhs) { return lhs.entropy < rhs.entropy;});
+
+    _stack.reserve(kmer_size + 1);
 
     /// Push a fake mmer to the bottom of the stack. We use it to reduce the number
     /// of if statements in the operator++, and therefore to reduce the number of branch
     /// mispredictions. It is also necessary to start branch-and-bound with every value
     /// of the first column without adding new if statements.
-    stack.push_back(phylo_mmer{ { 0, 0.0 }, phylo_kmer::na_pos, 0, 0 });
+    _stack.push_back(phylo_mmer{ { 0, 0.0 }, phylo_kmer::na_pos, 0, 0 });
 
     /// Calculate the first k-mer
     phylo_kmer::key_type kmer_key = 0;
     phylo_kmer::score_type kmer_score = 0.0;
     for (size_t i = 0; i < kmer_size; ++i)
     {
-        const auto& ith_letter = entry->at(start + i, 0);
+        const auto next_column = _column_order[i].index;
+        const auto& ith_letter = entry->at(next_column, 0);
         kmer_key = (kmer_key << bit_length<seq_type>()) | ith_letter.index;
         kmer_score += ith_letter.score;
 
-        stack.push_back(phylo_mmer{ { kmer_key, kmer_score }, phylo_kmer::pos_type(i), 0, 0 });
+        /// There is no point to iterate over the window if the first k-mer is already not good enough
+        if (kmer_score <= threshold)
+        {
+            *this = make_bnb_end_iterator();
+            return;
+        }
+
+        _stack.push_back(phylo_mmer{ { kmer_key, kmer_score }, phylo_kmer::pos_type(i), 0, 0 });
     }
 
-    /// There is no point to iterate over the window if the first k-mer is already not good enough
-    if (kmer_score < threshold)
-    {
-        return make_bnb_end_iterator();
-    }
-    else
-    {
-        return bnb_kmer_iterator{ entry, kmer_size, threshold, start, std::move(stack) };
-    }
-}
-
-bnb_kmer_iterator::bnb_kmer_iterator() noexcept
-    : _entry{ nullptr }, _kmer_size{ 0 }, _start_pos{ 0 }, _threshold{ 0.0 }, _stack{ }
-{}
-
-bnb_kmer_iterator::bnb_kmer_iterator(const node_entry* entry, size_t kmer_size, phylo_kmer::score_type threshold,
-                                     phylo_kmer::pos_type start_pos, stack_type&& stack) noexcept
-    : _entry{ entry }
-      , _kmer_size{ kmer_size }
-      , _start_pos{ start_pos }
-      , _threshold{ threshold }
-      , _stack{ std::move(stack) }
-{
-    /// stack can be empty for the end() method
+    /// Stack can be empty for the end() method
     if (!_stack.empty())
     {
         _current = _stack.back();
@@ -124,13 +124,13 @@ bnb_kmer_iterator::pointer bnb_kmer_iterator::operator->() const noexcept
 phylo_mmer bnb_kmer_iterator::next_phylokmer()
 {
     {
-        const auto next_index = _stack.back().last_index + 1;
+        const auto next_row = _stack.back().last_row + 1;
         _stack.pop_back();
-        _stack.back().next_index = next_index;
+        _stack.back().next_row = next_row;
     }
 
     /// until there is only the fake k-mer
-    while (!(_stack.size() == 1 && _stack.back().next_index == seq_traits::alphabet_size))
+    while (!(_stack.size() == 1 && _stack.back().next_row == seq_traits::alphabet_size))
     {
         const auto top_mmer = _stack.back();
 
@@ -138,7 +138,7 @@ phylo_mmer bnb_kmer_iterator::next_phylokmer()
         if (top_mmer.mmer.score < _threshold)
         {
             _stack.pop_back();
-            _stack.back().next_index = seq_traits::alphabet_size;
+            _stack.back().next_row = seq_traits::alphabet_size;
         }
         else
         {
@@ -147,25 +147,30 @@ phylo_mmer bnb_kmer_iterator::next_phylokmer()
             if (_stack.size() < _kmer_size + 1)
             {
                 /// go to the next letter in the next column
-                if (top_mmer.next_index < seq_traits::alphabet_size)
+                if (top_mmer.next_row < seq_traits::alphabet_size)
                 {
-                    const phylo_kmer::pos_type new_letter_position = top_mmer.last_position + 1;
-                    const auto& new_letter = _entry->at(_start_pos + new_letter_position, top_mmer.next_index);
+                    //const phylo_kmer::pos_type new_letter_column = top_mmer.last_column + 1;
+                    const auto next_column_index = static_cast<phylo_kmer::pos_type>(top_mmer.last_column + 1u);
+                    const auto next_column = _column_order[next_column_index].index;
+                    const auto& new_letter = _entry->at(_start_pos + next_column, top_mmer.next_row);
                     const auto new_mmer_key = (top_mmer.mmer.key << bit_length<seq_type>()) | new_letter.index;
                     const auto new_mmer_score = top_mmer.mmer.score + new_letter.score;
-                    _stack.push_back(phylo_mmer{ { new_mmer_key, new_mmer_score },
-                                                 new_letter_position, top_mmer.next_index, 0 });
+                    _stack.push_back(phylo_mmer{{ new_mmer_key, new_mmer_score },
+                                                next_column_index,
+                                                top_mmer.next_row, 0 });
                 }
                 /// the next column is over, get back
                 else
                 {
                     _stack.pop_back();
-                    _stack.back().next_index = top_mmer.last_index + 1;
+                    _stack.back().next_row = top_mmer.last_row + 1;
                 }
             }
             /// we have a good k-mer
             else
             {
+                const auto mmer = top_mmer.mmer;
+                //std::cout << "\t\t" << xpas::decode_kmer(mmer.key, _stack.size())  << " " << std::pow(10, mmer.score) << std::endl;
                 return top_mmer;
             }
         }
@@ -447,8 +452,9 @@ node_entry_view::iterator node_entry_view::begin()
     //                                     phylo_kmer::pos_type start_pos, stack_type&& stack)
     // DAC:
     //return { this, kmer_size, _threshold, _start, _prefix_size, std::move(_prefixes) };
+
     // BNB:
-    return make_bnb_begin_iterator(_entry, _start, kmer_size, _threshold);
+    return { _entry, kmer_size, _threshold, _start };
 }
 
 node_entry_view::iterator node_entry_view::end() const noexcept

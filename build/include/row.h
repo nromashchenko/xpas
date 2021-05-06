@@ -13,7 +13,7 @@ namespace xpas
     };
 
     using branch_type = xpas::phylo_kmer::branch_type;
-    using row_type = std::array<proba_pair, xpas::seq_traits::alphabet_size>;
+    using column_type = std::array<proba_pair, xpas::seq_traits::alphabet_size>;
 }
 
 #endif //RAPPAS_CPP_ROW_H

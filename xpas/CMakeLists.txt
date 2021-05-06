@@ -102,6 +102,7 @@ target_link_libraries(xpas_dna PUBLIC ${LINK_LIBRARIES})
 target_include_directories(xpas_dna PUBLIC ${INCLUDE_DIRECTORIES})
 target_compile_options(xpas_dna PRIVATE ${COMPILE_OPTIONS})
 target_compile_features(xpas_dna PUBLIC ${COMPILE_FEATURES})
+set_property(TARGET xpas_dna PROPERTY CXX_STANDARD 17)
 target_compile_definitions(xpas_dna
         PUBLIC
             ${HASH_MAP}

@@ -1,22 +1,23 @@
 #include "node_entry.h"
 #include "node_entry_view.h"
 #include <iostream>
+#include <cmath>
 
 using namespace xpas;
 
-node_entry::node_entry(std::string _id, vector_type&& rows)
+node_entry::node_entry(std::string _id, vector_type columns)
     : _branch_label{ std::move(_id) }
-    , _rows{ std::move(rows) }
+    , _columns{std::move(columns) }
 {}
 
-void node_entry::push_back(row_type row)
+void node_entry::add_column(column_type column)
 {
-    _rows.push_back(row);
+    _columns.push_back(column);
 }
 
 size_t node_entry::get_alignment_size() const
 {
-    return _rows.size();
+    return _columns.size();
 }
 
 std::string node_entry::get_label() const
@@ -24,9 +25,38 @@ std::string node_entry::get_label() const
     return _branch_label;
 }
 
-const proba_pair& node_entry::at(size_t position, size_t variant) const
+const proba_pair& node_entry::at(size_t column, size_t row) const
 {
-    return _rows[position][variant];
+    return _columns[column][row];
+}
+
+double entropy(const xpas::column_type& array)
+{
+    double entropy = 0.0;
+    for (const auto& proba_pair : array)
+    {
+        entropy -= proba_pair.score * std::log2(proba_pair.score);
+    }
+    return entropy;
+}
+
+void node_entry::calculate_entropies()
+{
+    for (const auto& log_column : _columns)
+    {
+        auto column = log_column;
+        for (size_t i = 0; i < log_column.size(); ++i)
+        {
+            column[i].score = static_cast<xpas::phylo_kmer::score_type>(std::pow(10, log_column[i].score));
+        }
+
+        _entropies.push_back(entropy(column));
+    }
+}
+
+double node_entry::get_column_entropy(size_t column_idx) const
+{
+    return _entropies[column_idx];
 }
 
 bool operator==(const node_entry& lhs, const node_entry& rhs)

@@ -19,6 +19,7 @@ target_compile_options(xpas_example_stats
         -Wall -Wextra -Wpedantic -Werror
 )
 
+set_property(TARGET xpas_example_stats PROPERTY CXX_STANDARD 17)
 target_compile_features(xpas_example_stats
     PRIVATE
         cxx_std_17
