@@ -19,6 +19,7 @@ bnb_kmer_iterator::bnb_kmer_iterator() noexcept
     : _entry{ nullptr }, _kmer_size{ 0 }, _start_pos{ 0 }, _threshold{ 0.0 }, _stack{ }
 {}
 
+
 bnb_kmer_iterator::bnb_kmer_iterator(const node_entry* entry, size_t kmer_size, phylo_kmer::score_type threshold,
                                      phylo_kmer::pos_type start_pos) noexcept
     : _entry{ entry }
@@ -32,7 +33,7 @@ bnb_kmer_iterator::bnb_kmer_iterator(const node_entry* entry, size_t kmer_size, 
         _column_order.push_back({i, entry->get_column_entropy(start_pos + i)});
     }
     std::sort(_column_order.begin(), _column_order.end(),
-              [](auto &lhs, auto &rhs) { return lhs.entropy < rhs.entropy;});
+              [](auto &lhs, auto &rhs) { return lhs.entropy > rhs.entropy;});
 
     _stack.reserve(kmer_size + 1);
 
@@ -42,14 +43,16 @@ bnb_kmer_iterator::bnb_kmer_iterator(const node_entry* entry, size_t kmer_size, 
     /// of the first column without adding new if statements.
     _stack.push_back(phylo_mmer{ { 0, 0.0 }, phylo_kmer::na_pos, 0, 0 });
 
+    _kmer_value_stack.resize(_kmer_size);
+
     /// Calculate the first k-mer
-    phylo_kmer::key_type kmer_key = 0;
     phylo_kmer::score_type kmer_score = 0.0;
     for (size_t i = 0; i < kmer_size; ++i)
     {
         const auto next_column = _column_order[i].index;
-        const auto& ith_letter = entry->at(next_column, 0);
-        kmer_key = (kmer_key << bit_length<seq_type>()) | ith_letter.index;
+        const auto& ith_letter = entry->at(start_pos + next_column, 0);
+        _kmer_value_stack[next_column] = ith_letter.index;
+        //kmer_key = (kmer_key << bit_length<seq_type>()) | ith_letter.index;
         kmer_score += ith_letter.score;
 
         /// There is no point to iterate over the window if the first k-mer is already not good enough
@@ -59,8 +62,9 @@ bnb_kmer_iterator::bnb_kmer_iterator(const node_entry* entry, size_t kmer_size, 
             return;
         }
 
-        _stack.push_back(phylo_mmer{ { kmer_key, kmer_score }, phylo_kmer::pos_type(i), 0, 0 });
+        _stack.push_back(phylo_mmer{ { 0, kmer_score }, phylo_kmer::pos_type(i), 0, 0 });
     }
+    _stack.back().mmer.key = calculate_key();
 
     /// Stack can be empty for the end() method
     if (!_stack.empty())
@@ -132,7 +136,7 @@ phylo_mmer bnb_kmer_iterator::next_phylokmer()
     /// until there is only the fake k-mer
     while (!(_stack.size() == 1 && _stack.back().next_row == seq_traits::alphabet_size))
     {
-        const auto top_mmer = _stack.back();
+        auto top_mmer = _stack.back();
 
         /// if we found a m-mer with low score, we cut the whole subtree
         if (top_mmer.mmer.score < _threshold)
@@ -153,9 +157,15 @@ phylo_mmer bnb_kmer_iterator::next_phylokmer()
                     const auto next_column_index = static_cast<phylo_kmer::pos_type>(top_mmer.last_column + 1u);
                     const auto next_column = _column_order[next_column_index].index;
                     const auto& new_letter = _entry->at(_start_pos + next_column, top_mmer.next_row);
-                    const auto new_mmer_key = (top_mmer.mmer.key << bit_length<seq_type>()) | new_letter.index;
+                    //const auto new_mmer_key = (top_mmer.mmer.key << bit_length<seq_type>()) | new_letter.index;
                     const auto new_mmer_score = top_mmer.mmer.score + new_letter.score;
-                    _stack.push_back(phylo_mmer{{ new_mmer_key, new_mmer_score },
+
+                    //_kmer_value_stack.push_back(new_letter.index);
+                    _kmer_value_stack[next_column] = new_letter.index;
+                    //auto bases = top_mmer.kmer_bases;
+                    //bases[_column_order[next_column_index].index] = new_letter.index;
+
+                    _stack.push_back(phylo_mmer{{ 0, new_mmer_score },
                                                 next_column_index,
                                                 top_mmer.next_row, 0 });
                 }
@@ -169,8 +179,9 @@ phylo_mmer bnb_kmer_iterator::next_phylokmer()
             /// we have a good k-mer
             else
             {
-                const auto mmer = top_mmer.mmer;
+                //const auto mmer = top_mmer.mmer;
                 //std::cout << "\t\t" << xpas::decode_kmer(mmer.key, _stack.size())  << " " << std::pow(10, mmer.score) << std::endl;
+                top_mmer.mmer.key = calculate_key();
                 return top_mmer;
             }
         }
@@ -180,6 +191,15 @@ phylo_mmer bnb_kmer_iterator::next_phylokmer()
     return {};
 }
 
+phylo_kmer::key_type bnb_kmer_iterator::calculate_key()
+{
+    phylo_kmer::key_type key = 0;
+    for (const auto& value : _kmer_value_stack)
+    {
+        key = (key << bit_length<seq_type>()) | value;
+    }
+    return key;
+}
 
 dac_kmer_iterator xpas::impl::make_dac_end_iterator()
 {

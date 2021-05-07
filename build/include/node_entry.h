@@ -43,6 +43,8 @@ namespace xpas
         vector_type _columns;
 
         std::vector<double> _entropies;
+
+        std::vector<size_t> _column_heap;
     };
 
     namespace impl

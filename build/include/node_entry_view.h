@@ -22,6 +22,7 @@ namespace xpas
         struct phylo_mmer
         {
             xpas::unpositioned_phylo_kmer mmer;
+
             /// a position of the last letter
             xpas::phylo_kmer::pos_type last_column;
             size_t last_row;
@@ -61,11 +62,15 @@ namespace xpas
         private:
             phylo_mmer next_phylokmer();
 
+            phylo_kmer::key_type calculate_key();
+
             const node_entry* _entry;
             size_t _kmer_size;
             xpas::phylo_kmer::pos_type _start_pos;
             xpas::phylo_kmer::score_type _threshold;
             stack_type _stack;
+
+            std::vector<seq_traits::key_type> _kmer_value_stack;
             phylo_mmer _current;
 
             struct column_pair
