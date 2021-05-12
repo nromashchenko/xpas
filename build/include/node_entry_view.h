@@ -43,9 +43,15 @@ namespace xpas
 
             using stack_type = std::vector<phylo_mmer>;
 
+            struct column_pair
+            {
+                size_t index;
+                double entropy;
+            };
+
             bnb_kmer_iterator() noexcept;
             bnb_kmer_iterator(const node_entry* entry, size_t kmer_size, xpas::phylo_kmer::score_type threshold,
-                              xpas::phylo_kmer::pos_type start_pos) noexcept;
+                              xpas::phylo_kmer::pos_type start_pos, std::vector<column_pair> column_order) noexcept;
             bnb_kmer_iterator(const bnb_kmer_iterator&) = delete;
             bnb_kmer_iterator(bnb_kmer_iterator&&) = default;
             bnb_kmer_iterator& operator=(const bnb_kmer_iterator&) = delete;
@@ -60,9 +66,8 @@ namespace xpas
             pointer operator->() const noexcept;
 
         private:
-            phylo_mmer next_phylokmer();
-
-            phylo_kmer::key_type calculate_key();
+            void _update_entropies();
+            phylo_mmer _next_phylokmer();
 
             const node_entry* _entry;
             size_t _kmer_size;
@@ -70,14 +75,7 @@ namespace xpas
             xpas::phylo_kmer::score_type _threshold;
             stack_type _stack;
 
-            std::vector<seq_traits::key_type> _kmer_value_stack;
             phylo_mmer _current;
-
-            struct column_pair
-            {
-                size_t index;
-                double entropy;
-            };
 
             std::vector<column_pair> _column_order;
         };
