@@ -51,6 +51,9 @@ namespace xpas
         static constexpr size_t alphabet_size = 4;
         static constexpr size_t max_kmer_length = 14;
 
+        /// Powers of 4, the size of the alphabet
+        static const key_type pow_sigma[];
+
         /// A type returned by encoding an unambiguous character
         using unambiguous_code_t = optional<uint8_t>;
 
@@ -207,6 +210,9 @@ namespace xpas
             const auto optional = ambiguous_key_to_code(base);
             return !optional || optional->size() > 1;
         }
+
+        /// Powers of 4 (the size of the alphabet)
+
     };
 
 #elif SEQ_TYPE_AA
@@ -238,6 +244,9 @@ namespace xpas
         /// \brief Alphabet size
         static constexpr size_t alphabet_size = 20;
         static constexpr size_t max_kmer_length = 6;
+
+        /// Powers of 20, the size of the alphabet
+        static const key_t pow_sigma[];
 
         /// A type returned by encoding an unambiguous character
         using unambiguous_code_t = optional<uint8_t>;

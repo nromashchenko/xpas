@@ -33,7 +33,7 @@ bnb_kmer_iterator::bnb_kmer_iterator(const node_entry* entry, size_t kmer_size, 
         _column_order.push_back({i, entry->get_column_entropy(start_pos + i)});
     }
     std::sort(_column_order.begin(), _column_order.end(),
-              [](auto &lhs, auto &rhs) { return lhs.entropy > rhs.entropy;});
+              [](auto &lhs, auto &rhs) { return lhs.entropy < rhs.entropy;});
 
     _stack.reserve(kmer_size + 1);
 
@@ -47,12 +47,14 @@ bnb_kmer_iterator::bnb_kmer_iterator(const node_entry* entry, size_t kmer_size, 
 
     /// Calculate the first k-mer
     phylo_kmer::score_type kmer_score = 0.0;
+    phylo_kmer::key_type kmer_key = 0;
     for (size_t i = 0; i < kmer_size; ++i)
     {
         const auto next_column = _column_order[i].index;
         const auto& ith_letter = entry->at(start_pos + next_column, 0);
         _kmer_value_stack[next_column] = ith_letter.index;
         //kmer_key = (kmer_key << bit_length<seq_type>()) | ith_letter.index;
+        kmer_key = kmer_key + ith_letter.index * (seq_traits::pow_sigma[kmer_size - next_column - 1]);
         kmer_score += ith_letter.score;
 
         /// There is no point to iterate over the window if the first k-mer is already not good enough
@@ -62,7 +64,7 @@ bnb_kmer_iterator::bnb_kmer_iterator(const node_entry* entry, size_t kmer_size, 
             return;
         }
 
-        _stack.push_back(phylo_mmer{ { 0, kmer_score }, phylo_kmer::pos_type(i), 0, 0 });
+        _stack.push_back(phylo_mmer{ { kmer_key, kmer_score }, phylo_kmer::pos_type(i), 0, 0 });
     }
     _stack.back().mmer.key = calculate_key();
 
@@ -158,6 +160,8 @@ phylo_mmer bnb_kmer_iterator::next_phylokmer()
                     const auto next_column = _column_order[next_column_index].index;
                     const auto& new_letter = _entry->at(_start_pos + next_column, top_mmer.next_row);
                     //const auto new_mmer_key = (top_mmer.mmer.key << bit_length<seq_type>()) | new_letter.index;
+                    const auto new_mmer_key = top_mmer.mmer.key + new_letter.index *
+                        (seq_traits::pow_sigma[_kmer_size - next_column - 1]);
                     const auto new_mmer_score = top_mmer.mmer.score + new_letter.score;
 
                     //_kmer_value_stack.push_back(new_letter.index);
@@ -165,7 +169,7 @@ phylo_mmer bnb_kmer_iterator::next_phylokmer()
                     //auto bases = top_mmer.kmer_bases;
                     //bases[_column_order[next_column_index].index] = new_letter.index;
 
-                    _stack.push_back(phylo_mmer{{ 0, new_mmer_score },
+                    _stack.push_back(phylo_mmer{{ new_mmer_key, new_mmer_score },
                                                 next_column_index,
                                                 top_mmer.next_row, 0 });
                 }
@@ -181,7 +185,7 @@ phylo_mmer bnb_kmer_iterator::next_phylokmer()
             {
                 //const auto mmer = top_mmer.mmer;
                 //std::cout << "\t\t" << xpas::decode_kmer(mmer.key, _stack.size())  << " " << std::pow(10, mmer.score) << std::endl;
-                top_mmer.mmer.key = calculate_key();
+                //top_mmer.mmer.key = calculate_key();
                 return top_mmer;
             }
         }
