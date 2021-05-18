@@ -3,6 +3,7 @@
 
 #include "row.h"
 #include <stack>
+#include <boost/container/static_vector.hpp>
 
 namespace xpas::impl
 {
@@ -41,7 +42,8 @@ namespace xpas
             using reference = const xpas::phylo_kmer&;
             using pointer = const xpas::phylo_kmer*;
 
-            using stack_type = std::vector<phylo_mmer>;
+            //using stack_type = std::vector<phylo_mmer>;
+            using stack_type = boost::container::static_vector<phylo_mmer, seq_traits::max_kmer_length + 1>;
 
             bnb_kmer_iterator() noexcept;
             bnb_kmer_iterator(const node_entry* entry, size_t kmer_size, xpas::phylo_kmer::score_type threshold,
