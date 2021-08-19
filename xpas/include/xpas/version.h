@@ -1,6 +1,8 @@
 #ifndef XPAS_VERSION_H
 #define XPAS_VERSION_H
 
+#include <string>
+
 namespace xpas
 {
     /// \brief xpas version class. Follows the rules of semantic versioning 2.0.
