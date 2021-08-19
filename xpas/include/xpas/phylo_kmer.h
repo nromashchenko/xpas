@@ -144,7 +144,7 @@ namespace xpas
     optional<typename AmbiguityPolicy::value_type> encode_kmer(std::string_view kmer);
 
     template<typename AmbiguityPolicy>
-    optional<phylo_kmer::key_type> encode_kmer(const std::string& kmer)
+    optional<typename AmbiguityPolicy::value_type> encode_kmer(const std::string& kmer)
     {
         return encode_kmer<AmbiguityPolicy>(std::string_view{ kmer });
     }
